@@ -296,4 +296,4 @@
 ;;;; A population is a list of lists (string number)
 (defun best (population)
   "Returns the minimal value of a population"
-  (second (first (sort (copy-seq population) #'< :key #'third))))
+  (second (first (sort (copy-seq population) #'> :key #'third))))
