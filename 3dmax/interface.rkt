@@ -1,27 +1,38 @@
 #lang racket
 
-(require racket/gui plot mrlib/gif "shared.rkt" "tournament-elitism.rkt")
+(require racket/gui plot "shared.rkt" "genetic-algorithm.rkt")
 
-(define SETUP-WIDTH 180)
-(define PATH-GRAPH "./results/graph.gif")
-(define PATH-PERFORMANCE "./results/performance.gif")
-(define GAUGE-RANGE 10000)
-(define GRAPH-WIDTH 400)
-(define GRAPH-HEIGHT 400)
+(define WIDTH 1400)
 
 (define main-window (new frame% [label "GENETIC ALGORITHM"]
-                         [style (list 'no-resize-border)]))
+                         [style (list 'no-resize-border)]
+                         [width WIDTH]))
+
+(define main-panel (new horizontal-panel% [parent main-window]))
 
 (define setup-panel (new vertical-panel%
-                         [parent main-window]
+                         [parent main-panel]
                          [alignment '(left top)]
-                         [min-width SETUP-WIDTH]
                          [stretchable-width #f]))
 
-(define fn (new text-field%
+(define canvas-panel (new horizontal-panel%
+                          [parent main-panel]
+                          [alignment (list 'center 'center)]))
+(define function-canvas (new canvas% [parent canvas-panel]))
+(define performance-canvas (new canvas% [parent canvas-panel]))
+
+(define fn (new combo-field%
                 [label "FUNCTION"]
                 [parent setup-panel]
-                [init-value "(λ (x) (+ (* x (sin (expt x 4))) (cos (* x x))))"]))
+                [choices (list "(λ (x) (+ (* x (sin (expt x 4))) (cos (* x x))))"
+                               "(λ (x) (- (+ 480 (* -1 (abs (* x (sin (sqrt (abs x)))))))))"
+                               "(λ (x y) (+ 21.5 (* x (sin (* 4 pi x))) (* y (sin (* 20 pi y)))))")]
+                [init-value "(λ (x y) (+ 21.5 (* x (sin (* 4 pi x))) (* y (sin (* 20 pi y)))))"]))
+
+(define fn-type (new check-box%
+                     [label "3D"]
+                     [parent setup-panel]
+                     [value #t]))
 
 (define threshold (new text-field%
                        [label "THRESHOLD"]
@@ -31,7 +42,7 @@
 (define animation (new text-field%
                        [label "ANIMATION SPEED"]
                        [parent setup-panel]
-                       [init-value "5"]))
+                       [init-value "0.03"]))
 
 (define selection (new radio-box%
                        [label "SELECTION"]
@@ -53,15 +64,25 @@
                         [parent setup-panel]
                         [init-value "10"]))
 
-(define range-min (new text-field%
-                       [label "RANGE MIN"]
-                       [parent setup-panel]
-                       [init-value "0"]))
+(define x-min (new text-field%
+                   [label "X MIN"]
+                   [parent setup-panel]
+                   [init-value "-3.1"]))
 
-(define range-max (new text-field%
-                       [label "RANGE MAX"]
-                       [parent setup-panel]
-                       [init-value "3"]))
+(define x-max (new text-field%
+                   [label "X MAX"]
+                   [parent setup-panel]
+                   [init-value "12.1"]))
+
+(define y-min (new text-field%
+                   [label "Y MIN*"]
+                   [parent setup-panel]
+                   [init-value "4.1"]))
+
+(define y-max (new text-field%
+                   [label "Y MAX*"]
+                   [parent setup-panel]
+                   [init-value "5.8"]))
 
 (define pc (new text-field%
                 [label "PC"]
@@ -88,17 +109,15 @@
                      [parent setup-panel]
                      [enabled #f]))
 
+(define y-entry (new text-field%
+                     [label "Y*"]
+                     [parent setup-panel]
+                     [enabled #f]))
+
 (define fx-entry (new text-field%
-                      [label "F(X)"]
+                      [label "F(X Y*)"]
                       [parent setup-panel]
                       [enabled #f]))
-
-(define progress (new gauge%
-                      [label "PROGRESS "]
-                      [parent setup-panel]
-                      [stretchable-width #t]
-                      [stretchable-height #t]
-                      [range GAUGE-RANGE]))
 
 (define start (new button%
                    [label "START"]
@@ -107,83 +126,132 @@
                    [stretchable-height #t]
                    [callback (λ (b e)
                                (let ((fn (get-value fn))
+                                     (fnt (send fn-type get-value));
                                      (th (get-value threshold))
                                      (as (get-value animation))
                                      (sl (if (= 0 (send selection get-selection)) 'roulette 'tournament))
                                      (tk (get-value tournament-k))
                                      (res (get-value resolution))
                                      (el (get-value elitism))
-                                     (x-min (get-value range-min))
-                                     (x-max (get-value range-max))
+                                     (x-min (get-value x-min))
+                                     (x-max (get-value x-max))
+                                     (y-min (get-value y-min));
+                                     (y-max (get-value y-max));
                                      (pc (get-value pc))
                                      (pm (get-value pm))
                                      (lg (get-value last-generation))
                                      (nind (get-value number-individuals)))
                                  (let-values ([(points best best-for-generation med-for-generation) (genetic-algorithm #:function fn
-                                                                                                    #:threshold th
-                                                                                                    #:selection sl
-                                                                                                    #:tournament-k tk
-                                                                                                    #:resolution res
-                                                                                                    #:elitism el
-                                                                                                    #:range-min x-min
-                                                                                                    #:range-max x-max
-                                                                                                    #:pc pc
-                                                                                                    #:pm pm
-                                                                                                    #:last-generation lg
-                                                                                                    #:number-of-individuals nind)])
-                                   (plot-performance-bitmap best-for-generation med-for-generation)
-                                   (plot-function-and-points-bitmap fn points x-min x-max as)
+                                                                                                                       #:3d fnt
+                                                                                                                       #:threshold th
+                                                                                                                       #:selection sl
+                                                                                                                       #:tournament-k tk
+                                                                                                                       #:resolution res
+                                                                                                                       #:elitism el
+                                                                                                                       #:x-min x-min
+                                                                                                                       #:x-max x-max
+                                                                                                                       #:y-min y-min
+                                                                                                                       #:y-max y-max
+                                                                                                                       #:pc pc
+                                                                                                                       #:pm pm
+                                                                                                                       #:last-generation lg
+                                                                                                                       #:number-of-individuals nind)])
+                                   (plot-performance best-for-generation med-for-generation)
                                    (send x-entry set-value (real->decimal-string (first best) 5))
-                                   (send fx-entry set-value (real->decimal-string (second best) 5)))))]))
+                                   (send y-entry set-value (if fnt (real->decimal-string (second best) 5) ""))
+                                   (send fx-entry set-value (real->decimal-string (if fnt (third best) (second best)) 5))
+                                   (plot-function-and-points fn fnt points x-min x-max y-min y-max as))))]))
 
 (define (get-value widget)
   (eval (read (open-input-string (send widget get-value)))))
 
-(define (plot-function-and-points-bitmap fn list-of-points x-min x-max animation-speed)
-  (if (directory-exists? "./results")
-      '()
-      (make-directory "./results"))
-  (if (file-exists? PATH-GRAPH)
-      (delete-file PATH-GRAPH)
-      '())
-  (let ((gauge-increment (floor (/ GAUGE-RANGE (length list-of-points))))
-        (gauge-value 0)
-        (result '()))
-    (for-each
-     (λ (population)
-       (set! result (cons
-                     (plot-bitmap (list (points population
-                                                #:x-min x-min
-                                                #:x-max x-max
-                                                #:color 'red
-                                                #:alpha 0.5)
-                                        (function fn x-min x-max 
-                                                  #:color 'black 
-                                                  #:alpha 1))
-                                  #:title "MAXIMIZATION"
-                                  #:x-label "X"
-                                  #:y-label "F(X)"
-                                  #:width GRAPH-WIDTH
-                                  #:height GRAPH-HEIGHT)
-                     result))
-       (set! gauge-value (+ gauge-value gauge-increment))
-       (send progress set-value gauge-value))
-     list-of-points)
-    (write-animated-gif (reverse result) animation-speed PATH-GRAPH)
-    (send progress set-value GAUGE-RANGE)))
-
-(define (plot-performance-bitmap y-by-gen med-by-gen)
-  (if (directory-exists? "./results")
-      '()
-      (make-directory "./results"))
-  (if (file-exists? PATH-PERFORMANCE)
-      (delete-file PATH-PERFORMANCE)
-      '())
-  (write-gif (plot-bitmap (list (lines y-by-gen #:color 'red) (lines med-by-gen #:color 'blue))
-                          #:title "MAXIMIZATION"
-                          #:x-label "X"
-                          #:y-label "F(X)"
-                          #:width GRAPH-WIDTH
-                          #:height GRAPH-HEIGHT) PATH-PERFORMANCE))
-
 (send main-window show #t)
+(plot-background-alpha 0)
+
+(define (plot-function-and-points fn 3d list-of-points x-min x-max y-min y-max sleep-time)
+  (if 3d
+      (let* ((z-max (apply max (map (λ (points) (apply max (map third points))) list-of-points)))
+             (z-min (apply min (map (λ (points) (apply min (map third points))) list-of-points)))
+             (plot-background (plot3d-bitmap (surface3d fn x-min x-max y-min y-max)
+                                             #:title "MAXIMIZATION"
+                                             #:x-label "X"
+                                             #:y-label "Y"
+                                             #:z-label "F(X, Y)"
+                                             #:x-min x-min
+                                             #:x-max x-max
+                                             #:y-min y-min
+                                             #:y-max y-max
+                                             #:z-min z-min
+                                             #:z-max z-max
+                                             #:width (- (/ (send canvas-panel get-width) 2) 40)
+                                             #:height (- (send canvas-panel get-height) 40))))
+        (for-each
+         (λ (population)
+           (define dc (send function-canvas get-dc))
+           (send dc clear)
+           (send dc draw-bitmap plot-background 0 0)
+           (plot3d/dc (points3d population
+                                #:x-min x-min
+                                #:x-max x-max
+                                #:y-min y-min
+                                #:y-max y-max
+                                #:z-min z-min
+                                #:z-max z-max
+                                #:color 'red
+                                #:alpha 0.5)
+                      dc
+                      0 0
+                      (- (/ (send canvas-panel get-width) 2) 40)
+                      (- (send canvas-panel get-height) 40)
+                      #:title "MAXIMIZATION"
+                      #:x-label "X"
+                      #:y-label "Y"
+                      #:z-label "F(X, Y)")
+           (sleep/yield sleep-time))
+         list-of-points))
+      (let* ((fx-max (apply max (map (λ (points) (apply max (map second points))) list-of-points)))
+             (fx-min (apply min (map (λ (points) (apply min (map second points))) list-of-points)))
+             (plot-background (plot-bitmap (function fn x-min x-max)
+                                             #:title "MAXIMIZATION"
+                                             #:x-label "X"
+                                             #:y-label "F(X)"
+                                             #:x-min x-min
+                                             #:x-max x-max
+                                             #:y-min fx-max
+                                             #:y-max fx-min
+                                             #:width (- (/ (send canvas-panel get-width) 2) 40)
+                                             #:height (- (send canvas-panel get-height) 40))))
+        (for-each
+         (λ (population)
+           (define dc (send function-canvas get-dc))
+           (send dc clear)
+           (send dc draw-bitmap plot-background 0 0)
+           (plot/dc (points population
+                             #:x-min x-min
+                             #:x-max x-max
+                             #:y-min fx-max
+                             #:y-max fx-min
+                             #:color 'red
+                             #:alpha 0.5)
+                    dc
+                    0 0
+                    (- (/ (send canvas-panel get-width) 2) 40)
+                    (- (send canvas-panel get-height) 40)
+                    #:title "MAXIMIZATION"
+                    #:x-label "X"
+                    #:y-label "F(X)")
+           (sleep/yield sleep-time))
+         list-of-points))))
+
+(define (plot-performance y-by-gen med-by-gen)
+  (define dc (send performance-canvas get-dc))
+  (send dc clear)
+  (plot/dc (list (lines y-by-gen #:color 'red #:label "Best")
+                 (lines med-by-gen #:color 'blue #:label "Average"))
+           (send performance-canvas get-dc)
+           0 0
+           (- (/ (send canvas-panel get-width) 2) 40)
+           (- (send canvas-panel get-height) 40)
+           #:title "PERFORMANCE"
+           #:x-label "GENERATION"
+           #:y-label "Y"))
