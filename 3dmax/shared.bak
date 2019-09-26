@@ -1,5 +1,0 @@
-#lang racket
-
-(define GA-FUNCTION (λ (x y) (+ 21.5 (* x (sin (* 4 pi x))) (* y (sin (* 20 pi y))))))
-
-(provide GA-FUNCTION)
