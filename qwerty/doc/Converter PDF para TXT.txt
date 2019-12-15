@@ -1,0 +1,1 @@
+gswin64c -sDEVICE=txtwrite -o output.txt input.pdf
